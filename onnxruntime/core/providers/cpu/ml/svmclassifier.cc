@@ -47,10 +47,10 @@ SVMClassifier<T>::SVMClassifier(const OpKernelInfo& info)
   }
 
   using_strings_ = false;
-  if (classlabels_strings_.size() > 0) {
+  if (!classlabels_strings_.empty()) {
     using_strings_ = true;
     class_count_ = classlabels_strings_.size();
-  } else if (classlabels_ints_.size() > 0) {
+  } else if (!classlabels_ints_.empty()) {
     class_count_ = classlabels_ints_.size();
   } else {
     class_count_ = 1;
@@ -63,9 +63,9 @@ SVMClassifier<T>::SVMClassifier(const OpKernelInfo& info)
     mode_ = SVM_TYPE::SVM_LINEAR;
     set_kernel_type(KERNEL::LINEAR);
   }
-  ORT_ENFORCE(classlabels_strings_.size() > 0 || classlabels_ints_.size() > 0);
+  ORT_ENFORCE(!classlabels_strings_.empty() || !classlabels_ints_.empty());
   ORT_ENFORCE(proba_.size() == probb_.size());
-  ORT_ENFORCE(coefficients_.size() > 0);
+  ORT_ENFORCE(!coefficients_.empty());
   weights_are_all_positive_ = true;
   for (int64_t i = 0; i < static_cast<int64_t>(coefficients_.size()); i++) {
     if (coefficients_[i] < 0) {
@@ -86,7 +86,7 @@ Status SVMClassifier<T>::Compute(OpKernelContext* ctx) const {
   Tensor* Z;
 
   std::vector<int64_t> dims;
-  if (mode_ == SVM_TYPE::SVM_SVC && proba_.size() == 0)
+  if (mode_ == SVM_TYPE::SVM_SVC && proba_.empty())
     dims = {static_cast<int64_t>(N), static_cast<int64_t>(class_count_ * (class_count_ - 1) / 2)};
   else
     dims = {static_cast<int64_t>(N), static_cast<int64_t>(class_count_)};
@@ -153,7 +153,7 @@ Status SVMClassifier<T>::Compute(OpKernelContext* ctx) const {
         scores.push_back(val);
       }
     }
-    if (proba_.size() > 0 && mode_ == SVM_TYPE::SVM_SVC) {
+    if (!proba_.empty() && mode_ == SVM_TYPE::SVM_SVC) {
       //compute probabilities from the scores
       std::vector<float> estimates;
       std::vector<float> probsp2;
@@ -182,7 +182,7 @@ Status SVMClassifier<T>::Compute(OpKernelContext* ctx) const {
       }
     }
     int64_t maxvotes = 0;
-    if (votes.size() > 0) {
+    if (!votes.empty()) {
       for (int64_t k = 0; k < static_cast<int64_t>(votes.size()); k++) {
         if (votes[k] > maxvotes) {
           maxvotes = votes[k];
@@ -202,13 +202,14 @@ Status SVMClassifier<T>::Compute(OpKernelContext* ctx) const {
     if (rho_.size() == 1)  //binary
     {
       if (using_strings_) {
-        if (classlabels_strings_.size() == 2 && weights_are_all_positive_ && maxweight >= 0.5 && proba_.size() == 0) {
+        if (classlabels_strings_.size() == 2 && weights_are_all_positive_ && maxweight >= 0.5 && proba_.empty()) {
           Y->template MutableData<std::string>()[n] = classlabels_strings_[1];  //positive label
           write_additional_scores = 0;
-        } else if (classlabels_strings_.size() == 2 && maxweight > 0 && !weights_are_all_positive_ && proba_.size() == 0) {
+        } else if (classlabels_strings_.size() == 2 && maxweight > 0 && !weights_are_all_positive_ && proba_.empty()) {
           Y->template MutableData<std::string>()[n] = classlabels_strings_[1];  //positive label
           write_additional_scores = 0;
-        } else if (classlabels_strings_.size() == 2 && proba_.size() > 0) {            //this case all classes are in their rightful spot
+        } else if (classlabels_strings_.size() == 2 &&
+                   !proba_.empty()) {  // this case all classes are in their rightful spot
           Y->template MutableData<std::string>()[n] = classlabels_strings_[maxclass];  //whichever label
           write_additional_scores = -1;
         } else if (classlabels_strings_.size() == 2) {
@@ -221,13 +222,14 @@ Status SVMClassifier<T>::Compute(OpKernelContext* ctx) const {
         }
       } else  //no strings
       {
-        if (classlabels_ints_.size() == 2 && weights_are_all_positive_ && maxweight >= 0.5 && proba_.size() == 0) {
+        if (classlabels_ints_.size() == 2 && weights_are_all_positive_ && maxweight >= 0.5 && proba_.empty()) {
           Y->template MutableData<int64_t>()[n] = classlabels_ints_[1];  //positive label
           write_additional_scores = 0;
-        } else if (classlabels_ints_.size() == 2 && maxweight > 0 && !weights_are_all_positive_ && proba_.size() == 0) {
+        } else if (classlabels_ints_.size() == 2 && maxweight > 0 && !weights_are_all_positive_ && proba_.empty()) {
           Y->template MutableData<int64_t>()[n] = classlabels_ints_[0];  //pos  label
           write_additional_scores = 0;
-        } else if (classlabels_ints_.size() == 2 && proba_.size() > 0)  //this case all classes are in their rightful spot
+        } else if (classlabels_ints_.size() == 2 &&
+                   !proba_.empty())  // this case all classes are in their rightful spot
         {
           Y->template MutableData<int64_t>()[n] = classlabels_ints_[maxclass];  //whichever label
           write_additional_scores = -1;

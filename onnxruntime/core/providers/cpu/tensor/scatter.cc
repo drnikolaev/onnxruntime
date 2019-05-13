@@ -14,7 +14,7 @@ class Scatter final : public OpKernel {
     ORT_ENFORCE(info.GetAttr<int64_t>("axis", &axis_).IsOK(),
                 "Missing/Invalid 'axis' attribute value");
   }
-  ~Scatter() = default;
+  ~Scatter() override = default;
   Status Compute(OpKernelContext* context) const override;
 
  private:
@@ -205,7 +205,8 @@ Status Scatter::Compute(OpKernelContext* context) const {
   MLDataType Tind_type = indices_input->DataType();
   if (Tind_type == DataTypeImpl::GetType<int32_t>()) {
     return CopyScatterData<int32_t>(data_input, indices_input, updates_input, axis, data_output);
-  } else if (Tind_type == DataTypeImpl::GetType<int64_t>()) {
+  }
+  if (Tind_type == DataTypeImpl::GetType<int64_t>()) {
     return CopyScatterData<int64_t>(data_input, indices_input, updates_input, axis, data_output);
   }
   return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Expecting indices to be either int32_t or int64_t");
