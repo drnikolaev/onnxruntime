@@ -12,9 +12,9 @@ struct OrtStatus {
   char msg[1];  // a null-terminated string
 };
 
-ORT_API(OrtStatus*, OrtCreateStatus, OrtErrorCode code, _In_ const char* msg) {
-  assert(!(code == 0 && msg != nullptr));
-  size_t clen = strlen(msg);
+ORT_API(OrtStatus*, OrtCreateStatus, OrtErrorCode code, _In_opt_ const char* msg) {
+  assert(code != 0);
+  size_t clen = msg == nullptr ? 0 : strlen(msg);
   OrtStatus* p = reinterpret_cast<OrtStatus*>(::malloc(sizeof(OrtStatus) + clen));
   if (p == nullptr) return nullptr;  // OOM
   p->code = code;
