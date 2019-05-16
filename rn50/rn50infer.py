@@ -72,8 +72,8 @@ from skl2onnx.common.data_types import FloatTensorType
 
 data_path, data_files = common.find_sample_data(
     description="Runs a ResNet50 network with a TensorRT inference engine.",
-    subfolder="trt", find_files=["binoculars.jpeg", "reflex_camera.jpeg", "tabby_tiger_cat.jpg",
- #                                "/home/snikolaev/.onnx/models/resnet50/model.onnx",
+    subfolder=".", find_files=["binoculars.jpeg", "reflex_camera.jpeg", "tabby_tiger_cat.jpg",
+#                                 "/home/snikolaev/.onnx/models/resnet50/model.onnx",
 #                                "/home/snikolaev/onnxruntime/rn50/trt/ResNet50.onnx",
     "/home/snikolaev/pytorch2/joc/rn50/resnet50.onnx",
                                  "class_labels.txt"])
@@ -89,7 +89,7 @@ test_case = load_normalized_test_case(test_image)
 
 sess_options = rt.SessionOptions()
 
-sess_options.enable_profiling = True
+#sess_options.enable_profiling = True
 #sess_options.profile_file_prefix = os.path.basename(".")
 
 #3sess = onnxrt.InferenceSession(args.model_path, sess_options)
@@ -99,7 +99,7 @@ sess = rt.InferenceSession(onnx_model_file, sess_options)
 meta = sess.get_modelmeta()
 
 ro = rt.RunOptions()
-ro.run_log_verbosity_level = 1
+ro.run_log_verbosity_level = 3
 # ro.run_tag = "testtag123"
 
 

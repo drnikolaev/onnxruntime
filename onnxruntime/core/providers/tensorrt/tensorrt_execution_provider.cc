@@ -74,7 +74,8 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   // Find inputs, initializers and outputs for each supported subgraph
   std::vector<std::unique_ptr<ComputeCapability>> result;
   int counter = 0;
-  for (const auto& group : supported_nodes_vector) {
+  for (const auto& group_pair : supported_nodes_vector) {
+    const auto& group = group_pair.first;
     if (!group.empty()) {
       std::unordered_set<size_t> node_set;
       node_set.reserve(group.size());
