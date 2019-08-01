@@ -4,13 +4,13 @@
 import unittest
 import random
 import os
-import test_util
 import sys
 
 
 class ModelZooTests(unittest.TestCase):
     server_ip = '127.0.0.1'
     server_port = 54321
+    grpc_port = 56789
     url_pattern = 'http://{0}:{1}/v1/models/{2}/versions/{3}:predict'
     server_app_path = ''  # Required
     log_level = 'verbose'
@@ -46,7 +46,7 @@ class ModelZooTests(unittest.TestCase):
             if onnx_file_path == '':
                 raise FileNotFoundError('Could not find any *.onnx file in {0}'.format(model_path))
             
-            cmd = [self.server_app_path, '--http_port', str(self.server_port), '--model_path', onnx_file_path, '--log_level', self.log_level]
+            cmd = [self.server_app_path, '--http_port', str(self.server_port), '--model_path', onnx_file_path, '--log_level', self.log_level, '--grpc_port', str(self.grpc_port)]
             test_util.test_log(cmd)
             server_app_proc = test_util.launch_server_app(cmd, self.server_ip, self.server_port,
                                                             self.server_ready_in_seconds)
@@ -67,6 +67,15 @@ class ModelZooTests(unittest.TestCase):
                 with open(os.path.join(test, 'request.pb'), 'rb') as f:
                     request_payload = f.read()
                 resp = test_util.make_http_request(url, pb_request_headers, request_payload)
+                test_util.pb_response_validation(self, resp, os.path.join(test, 'response.pb'))
+
+                test_util.test_log('[{0}] GRPC testing ....'.format(model_path))
+                uri = ("{}:{}".format(self.server_ip, self.grpc_port))
+                with open(os.path.join(test, 'request.pb'), 'rb') as f:
+                    request_payload = f.read()
+                with grpc.insecure_channel(uri) as channel:
+                    stub = prediction_service_pb2_grpc.PredictionServiceStub(channel)
+                    resp = stub.Predict(request_payload)
                 test_util.pb_response_validation(self, resp, os.path.join(test, 'response.pb'))
         finally:
             test_util.shutdown_server_app(server_app_proc, self.server_off_in_seconds)
@@ -96,11 +105,17 @@ class ModelZooTests(unittest.TestCase):
         test_util.test_log('-----------------------')
 
         self.server_port = random.randint(30000, 40000)
+        self.grpc_port = self.server_port + 1
         for model_path, data_paths in model_data_map.items():
             self.__test_model(model_path, data_paths)
 
 
 if __name__ == '__main__':
+    sys.path.append(sys.argv[4])
+    sys.path.append(sys.argv[5])
+
+    import test_util
+
     loader = unittest.TestLoader()
 
     test_classes = [ModelZooTests]

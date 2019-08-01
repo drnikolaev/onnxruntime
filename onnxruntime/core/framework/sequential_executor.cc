@@ -22,19 +22,17 @@ static Status ReleaseNodeMLValues(ExecutionFrame& frame,
                                   const SequentialExecutionPlan::NodeExecutionPlan& node_exec_plan,
                                   const logging::Logger& logger);
 
-Status SequentialExecutor::Execute(const SessionState& session_state,
-                                   const std::vector<int>& feed_mlvalue_idxs,
-                                   const std::vector<MLValue>& feeds,
-                                   const std::vector<int>& fetch_mlvalue_idxs,
-                                   std::vector<MLValue>& fetches,
-                                   const std::unordered_map<size_t, CustomAllocator> fetch_allocators,
+Status SequentialExecutor::Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
+                                   const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
+                                   std::vector<OrtValue>& fetches,
+                                   const std::unordered_map<size_t, CustomAllocator>& fetch_allocators,
                                    const logging::Logger& logger) {
-  bool f_profiler_enabled = session_state.Profiler().FEnabled();
+  const bool is_profiler_enabled = session_state.Profiler().IsEnabled();
   TimePoint tp;
   TimePoint sync_time_begin;
   TimePoint kernel_begin_time;
 
-  if (f_profiler_enabled) {
+  if (is_profiler_enabled) {
     tp = session_state.Profiler().StartTime();
   }
 
@@ -67,7 +65,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
     OpKernelContextInternal op_kernel_context(session_state, frame, *p_op_kernel, logger,
                                               p_op_kernel->Node().ImplicitInputDefs(), terminate_flag_);
     // TODO: log kernel outputs?
-    if (f_profiler_enabled) {
+    if (is_profiler_enabled) {
       sync_time_begin = session_state.Profiler().StartTime();
     }
 
@@ -102,7 +100,11 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
       }
     }
 
-    if (f_profiler_enabled) {
+#if defined DEBUG_NODE_INPUTS_OUTPUTS
+    utils::DumpNodeInputs(op_kernel_context, p_op_kernel->Node());
+#endif
+
+    if (is_profiler_enabled) {
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                                      p_op_kernel->Node().Name() + "_fence_before",
                                                      sync_time_begin,
@@ -126,11 +128,11 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
       return Status(compute_status.Category(), compute_status.Code(), msg_string);
     }
 
-    if (f_profiler_enabled) {
+    if (is_profiler_enabled) {
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                                      p_op_kernel->Node().Name() + "_kernel_time",
                                                      kernel_begin_time,
-                                                     {{"op_name", p_op_kernel->KernelDef().OpName()}});
+                                                     {{"op_name", p_op_kernel->KernelDef().OpName()}, {"provider", p_op_kernel->KernelDef().Provider()}});
 
       sync_time_begin = session_state.Profiler().StartTime();
     }
@@ -157,12 +159,16 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
       }
     }
 
-    if (f_profiler_enabled) {
+    if (is_profiler_enabled) {
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                                      p_op_kernel->Node().Name() + "_fence_after",
                                                      sync_time_begin,
                                                      {{"op_name", p_op_kernel->KernelDef().OpName()}});
     }
+
+#if defined(DEBUG_NODE_INPUTS_OUTPUTS)
+    utils::DumpNodeOutputs(op_kernel_context, p_op_kernel->Node(), session_state);
+#endif
 
     // free ml-values corresponding to this node
     VLOGS(logger, 1) << "Releasing node ML values after computing kernel: " << p_op_kernel->Node().Name();
@@ -175,7 +181,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
   VLOGS(logger, 1) << "Done with execution.";
 
   if (frame.HasMemoryPatternPlanner()) {
-    std::vector<TensorShape> input_shapes;
+    std::vector<std::reference_wrapper<const TensorShape>> input_shapes;
     bool all_tensors = true;
     for (const auto& feed : feeds) {
       if (!(feed.IsTensor())) {
@@ -183,7 +189,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
         break;
       }
       auto& tensor = feed.Get<Tensor>();
-      input_shapes.push_back(tensor.Shape());
+      input_shapes.push_back(std::cref(tensor.Shape()));
     }
 
     if (all_tensors) {
@@ -193,7 +199,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
     }
   }
 
-  if (f_profiler_enabled) {
+  if (is_profiler_enabled) {
     session_state.Profiler().EndTimeAndRecordEvent(profiling::SESSION_EVENT, "SequentialExecutor::Execute", tp);
   }
 
@@ -205,9 +211,9 @@ static Status ReleaseNodeMLValues(ExecutionFrame& frame,
                                   const SequentialExecutionPlan::NodeExecutionPlan& node_exec_plan,
                                   const logging::Logger& logger) {
   for (auto i = node_exec_plan.free_from_index; i <= node_exec_plan.free_to_index; ++i) {
-    auto mlvalue_idx = seq_exec_plan.to_be_freed[i];
-    VLOGS(logger, 1) << "Releasing mlvalue with index: " << mlvalue_idx;
-    ORT_RETURN_IF_ERROR(frame.ReleaseMLValue(mlvalue_idx));
+    auto ort_value_idx = seq_exec_plan.to_be_freed[i];
+    VLOGS(logger, 1) << "Releasing ort_value with index: " << ort_value_idx;
+    ORT_RETURN_IF_ERROR(frame.ReleaseMLValue(ort_value_idx));
   }
 
   return Status::OK();

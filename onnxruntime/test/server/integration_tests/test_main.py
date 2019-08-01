@@ -4,12 +4,16 @@
 import sys
 import random
 import unittest
-import function_tests
 
 if __name__ == '__main__':
+    sys.path.append(sys.argv[4])
+    sys.path.append(sys.argv[5])
+
+    import function_tests
+
     loader = unittest.TestLoader()
 
-    test_classes = [function_tests.HttpJsonPayloadTests, function_tests.HttpProtobufPayloadTests, function_tests.HttpEndpointTests]
+    test_classes = [function_tests.HttpJsonPayloadTests, function_tests.HttpProtobufPayloadTests, function_tests.HttpEndpointTests, function_tests.GRPCTests]
 
     test_suites = []
     for tests in test_classes:

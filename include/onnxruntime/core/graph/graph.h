@@ -135,7 +135,7 @@ class Node {
 
   /** Gets the Node's input definitions.
   @remarks requires ConstPointerContainer wrapper to apply const to the NodeArg pointers so access is read-only. */
-  const ConstPointerContainer<std::vector<NodeArg*>> InputDefs() const noexcept {
+  ConstPointerContainer<std::vector<NodeArg*>> InputDefs() const noexcept {
     return ConstPointerContainer<std::vector<NodeArg*>>(definitions_.input_defs);
   }
 
@@ -147,7 +147,7 @@ class Node {
   /** Gets the implicit inputs to this Node.
   If this Node contains a subgraph, these are the NodeArg's that are implicitly consumed by Nodes within that
   subgraph. e.g. If and Loop operators.*/
-  const ConstPointerContainer<std::vector<NodeArg*>> ImplicitInputDefs() const noexcept {
+  ConstPointerContainer<std::vector<NodeArg*>> ImplicitInputDefs() const noexcept {
     return ConstPointerContainer<std::vector<NodeArg*>>(definitions_.implicit_input_defs);
   }
 
@@ -158,7 +158,7 @@ class Node {
 
   /** Gets the Node's output definitions.
   @remarks requires ConstPointerContainer wrapper to apply const to the NodeArg pointers so access is read-only. */
-  const ConstPointerContainer<std::vector<NodeArg*>> OutputDefs() const noexcept {
+  ConstPointerContainer<std::vector<NodeArg*>> OutputDefs() const noexcept {
     return ConstPointerContainer<std::vector<NodeArg*>>(definitions_.output_defs);
   }
 
@@ -211,7 +211,9 @@ class Node {
   NodeConstIterator InputNodesEnd() const noexcept { return NodeConstIterator(relationships_.input_edges.cend()); }
 
   /** Gets an iterator to the beginning of the output nodes from this Node. */
-  NodeConstIterator OutputNodesBegin() const noexcept { return NodeConstIterator(relationships_.output_edges.cbegin()); }
+  NodeConstIterator OutputNodesBegin() const noexcept {
+    return NodeConstIterator(relationships_.output_edges.cbegin());
+  }
   /** Gets an iterator to the end of the output nodes from this Node. */
   NodeConstIterator OutputNodesEnd() const noexcept { return NodeConstIterator(relationships_.output_edges.cend()); }
 
@@ -270,12 +272,16 @@ class Node {
   */
   Graph* GetMutableGraphAttribute(const std::string& attr_name);
 
-  /** Checks if the Node contains at least one subgraph (this is the case for control flow operators, such as If, Scan, Loop). 
+  /** Checks if the Node contains at least one subgraph (this is the case for control flow operators, such as If, Scan, Loop).
   @returns true if the Node contains a subgraph.
   */
   bool ContainsSubgraph() const {
     return !attr_to_subgraph_map_.empty();
   }
+
+  /** Get the const subgraphs from a node. 
+  @remarks Creates a new vector so calling ContainsSubgraphs first is preferred. */
+  std::vector<gsl::not_null<const Graph*>> GetSubgraphs() const;
 
   /** Gets a map of attribute name to the mutable Graph instances for all subgraphs of the Node.
   @returns Map of the attribute name that defines the subgraph to the subgraph's Graph instance.
@@ -498,6 +504,9 @@ class Graph {
   /** Removes all initializer tensors from this Graph and releases the memory they were using. */
   void CleanAllInitializedTensors() noexcept;
 
+  /** Returns true if an initializer value can be overridden by a graph input with the same name. */
+  bool CanOverrideInitializer() const noexcept { return ir_version_ >= 4; }
+
   /** Gets the Graph inputs excluding initializers.
   These are the required inputs to the Graph as the initializers can be optionally overridden via graph inputs.
   @remarks Contains no nullptr values. */
@@ -705,6 +714,7 @@ class Graph {
 
   /** Gets the GraphProto representation of this Graph. */
   const ONNX_NAMESPACE::GraphProto& ToGraphProto();
+  ONNX_NAMESPACE::GraphProto ToGraphProto() const;
 
   /** Gets the ISchemaRegistry instances being used with this Graph. */
   IOnnxRuntimeOpSchemaCollectionPtr GetSchemaRegistry() const;
@@ -737,15 +747,21 @@ class Graph {
   /** When programmatically constructing a Graph, explicitly set graph inputs.
   @param inputs NodeArgs that represent complete graph inputs which need to be explicitly ordered.
   @remarks If the Graph was loaded from a GraphProto this has no effect.*/
-  void SetInputs(const std::vector<const NodeArg*> inputs);
+  void SetInputs(const std::vector<const NodeArg*>& inputs);
 
   /** When programmatically constructing a Graph, explicitly set graph outputs.
   @param outputs NodeArgs that represent complete graph outputs which need to be explicitly ordered.
   @remarks If the Graph was loaded from a GraphProto this has no effect.*/
-  void SetOutputs(const std::vector<const NodeArg*> outputs);
+  void SetOutputs(const std::vector<const NodeArg*>& outputs);
 
   /** Returns true if this is a subgraph or fase if it is a high-level graph. */
   bool IsSubgraph() const { return parent_graph_ != nullptr; }
+
+  /** Returns the parent graph if this is a subgraph */
+  const Graph* ParentGraph() const { return parent_graph_; }
+
+  /** Returns the mutable parent graph if this is a subgraph */
+  Graph* MutableParentGraph() { return parent_graph_; }
 
   /** Construct a Graph instance for a subgraph that is created from a GraphProto attribute in a Node.
   Inherits some properties from the parent graph.
@@ -877,9 +893,6 @@ class Graph {
   // Set graph inputs/outputs when resolving a graph..
   common::Status SetGraphInputsOutputs();
 
-  // Sync graph inputs/outputs when serializing to proto.
-  void SyncGraphInputsOutputs();
-
   // Clear all unused initializers
   void CleanUnusedInitializers();
 
@@ -902,6 +915,8 @@ class Graph {
                                        const ArgNameToTypeMap& name_to_type_map);
 
   void AddFunction(const ONNX_NAMESPACE::FunctionProto* func_proto);
+
+  void ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const;
 
   // GraphProto to store name, version, initializer.
   // When serializing <*this> Graph to a GraphProto, the nodes and
@@ -960,7 +975,7 @@ class Graph {
   std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*> model_functions_;
 
   // Model IR version.
-  Version ir_version_{};
+  Version ir_version_{ONNX_NAMESPACE::Version::IR_VERSION};
 
   int name_generator_ = 0;
 
@@ -972,6 +987,9 @@ class Graph {
   // NodeArgs that come from outer scope. Used when building a graph so that
   // these don't get recorded as graph inputs in the GraphProto.
   std::unordered_set<std::string> outer_scope_node_arg_names_;
+
+  // number of times Resolve has run.
+  int num_resolves_ = 0;
 };
 
 }  // namespace onnxruntime
